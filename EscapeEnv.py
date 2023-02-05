@@ -12,8 +12,6 @@ class survivor:
     # gen dx = 0 dy = 0 and recency is -1 if not seen or completed and completed is 0 or 1
     self.players_info = np.zeros(shape=(n_players,4)) # [player id] [x, y, recency, alive]
     self.players_info[:,3] = 1
-    print(f"player {id}'s player info:")
-    print(self.players_info)
     self.zombie_info = np.zeros(shape=(n_players,3)) # [zom id] [x, y, recency]
     self.view_range = view_range
 
@@ -59,7 +57,7 @@ class env:
   def __init__(self, map_size = [10,10], n_players = 2, n_zoms=1, gen_locs = np.array([[4,4], [1,8], [8,8]]), player_start_locs = np.array([[8,1], [7,2]]), i_decay = 0.2):
     self.n_players = n_players
     self.player_ids = np.arange(n_players)
-    print(f"Player id's {self.player_ids}")
+    #print(f"Player id's {self.player_ids}")
     self.n_zoms = n_zoms
     self.map_size = np.array(map_size)
     self.gen_locs = gen_locs
@@ -93,10 +91,12 @@ class env:
           p.gens_info[g.id] = np.array([g.x,g.y,1.0,g.completed])
         else:
           rec = p.gens_info[g.id,2]
+          if rec > self.i_decay:
+            rec = rec-self.i_decay
           # if the player knows the gen is complete, the recency stays at 1
           if p.gens_info[g.id,3] > 0:
-            rec = 1 + self.i_decay
-          p.gens_info[g.id] = np.array([p.gens_info[g.id,0],p.gens_info[g.id,1],max(rec-self.i_decay,0), p.gens_info[g.id,3]])
+            rec = 1
+          p.gens_info[g.id] = np.array([p.gens_info[g.id,0],p.gens_info[g.id,1], rec, p.gens_info[g.id,3]])
 
 
   
@@ -104,11 +104,11 @@ class env:
   def reset(self, randomize_gens = True):
     if randomize_gens:
       genlocs = np.random.choice(a=np.arange(self.map_size[0]*self.map_size[1]),size=self.n_gens, replace=False)
-      print("Randomizing generator locations")
-      print(genlocs)
+      #print("Randomizing generator locations")
+      #print(genlocs)
       for i in range(self.n_gens):
         self.gen_locs[i] = np.array([genlocs[i]%self.map_size[0], int(genlocs[i] / self.map_size[1])])
-      print(self.gen_locs)
+      #print(self.gen_locs)
 
     self.gens_active = self.n_gens
     self.door_open = False
@@ -128,13 +128,15 @@ class env:
         x = random.randint(0,self.map_size[0]-1)
         y = random.randint(0,self.map_size[1]-1)
         for p in self.players:
-          print(f"x: {x}, y: {y}, px: {p.x}, py:{p.y}")
           if x == p.x and y == p.y:
             onplayer = True
       self.zombies.append(zombie(i,x,y,3))
     self.update_player_info()
 
   def render_full_ascii(self, playerid=None):
+    """Renders the state of the game in ascii. 
+       If playerid is none, the entire state is rendered with full information
+       If payerid is not none, the state is rendered from that player's pov"""
     player=None
     if playerid is not None:
       player = self.players[playerid]
@@ -156,7 +158,6 @@ class env:
     if player is not None:
       for p in range(player.players_info.shape[0]):
         p_inf = player.players_info[p]
-        print(f"p_inf: {p_inf}")
         # if a player has been seen but is not currently being seen render
         # their last location with a lower-case p
         if p_inf[2] > 0 and p_inf[2] < 1:
@@ -170,7 +171,7 @@ class env:
       for g in range(player.gens_info.shape[0]):
         g_inf = player.gens_info[g]
         if g_inf[2]>0 and g_inf[2]<1:
-          zmap[int(g_inf[0])][int(g_inf[1])] = f"g{z}"
+          zmap[int(g_inf[0])][int(g_inf[1])] = f"g{g}"
 
     for i in range(self.map_size[0]+2):
       print("**", end="")
@@ -200,12 +201,12 @@ class env:
         print("hi")
 
 
-  def step(self, actions, verbose=True):
+  def step(self, actions, verbose=False):
     if verbose==True:
       for agent in range(actions.shape[0]):
         print(f"Agent {agent} Took action: {actions[agent]}")
 
-    act = input("P0 take action: ")
+    act = input("Player 0 take action ('w','a','s','d'): ")
     if act == 'w':
       self.players[0].y-=1
     if act == 's':

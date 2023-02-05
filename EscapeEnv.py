@@ -91,16 +91,13 @@ class env:
           p.gens_info[g.id] = np.array([g.x,g.y,1.0,g.completed])
         else:
           rec = p.gens_info[g.id,2]
-          if rec > self.i_decay:
+          if rec > 1.1*self.i_decay:
             rec = rec-self.i_decay
           # if the player knows the gen is complete, the recency stays at 1
           if p.gens_info[g.id,3] > 0:
             rec = 1
           p.gens_info[g.id] = np.array([p.gens_info[g.id,0],p.gens_info[g.id,1], rec, p.gens_info[g.id,3]])
 
-
-  
-  
   def reset(self, randomize_gens = True):
     if randomize_gens:
       genlocs = np.random.choice(a=np.arange(self.map_size[0]*self.map_size[1]),size=self.n_gens, replace=False)
@@ -146,8 +143,9 @@ class env:
       for x in range(self.map_size[0]):
         zmap[-1].append("  ")
     for g in self.gens:
-      if player is None or self.viewable_by(g.x,g.y, player) or g.completed > 0:
+      if player is None or self.viewable_by(g.x,g.y, player) or player.gens_info[g.id,3] > 0:
         zmap[g.x][g.y] = f"G{g.id}"
+      #TODO make it so that the generator has the number and letter flipped if it is completed
     for p in self.players:
       if player is None or self.viewable_by(p.x,p.y, player):
         zmap[p.x][p.y] = f"P{p.id}"
@@ -185,20 +183,69 @@ class env:
       print("**", end="")
     print("")
 
-
+  # out of bounds utility
   def oob(self, x,y):
     if x < 0 or x >= self.map_size[0] or y<0 or y >= self.map_size[1]:
       return False
     else:
       return True
 
-  def obs(self, player, view_range = 2):
-    print(f"observation for player: {player.id}")
+  def obs(self, id, verbose=True):
+    """ 
+    Returns an observation from the perspective of the
+    the player with the given id. view range is how far the 
+    player can see in each direction so for view range = x
+    the player can see in a x+1+x by x+1+x box 
     
+    obs format: np array(4,mapsize[0],mapsize[1])
+                (gens, players, zombies, me) 
+    where 
+    gens: np float array(shape = map_size) 
+          0 is a space not occupied by an unfinished 
+          gen and > 0 is occupied
+    players: same thing but players, 0 is dead
+    zombies: same thing but zombies 
 
-    for y in range(player.y-view_range, player.y+view_range+1):
-      for x in range(player.x-view_range, player.x+view_range+1):
-        print("hi")
+    and another array of misc information
+    int: players alive from this player's pov
+    int: gens left from this players pov     
+    binary: door open
+
+    """
+    
+    player = self.players[id]
+    view_range = player.view_range
+    x = player.x
+    y = player.y
+    if verbose:
+      print(f"observation for player: {id}")
+    obs1 = np.zeros(shape=(4, self.map_size[0], self.map_size[1]), dtype=np.float32)
+    players_alive = 0
+    gens_left = 0
+
+    for g in player.gens_info:
+      if g[3] == 0:
+        gens_left +=1
+        obs1[0,int(g[1]),int(g[0])] = g[2]
+    
+    for p in player.players_info:
+      p_status = min(p[2], p[3])
+      if p[3] > 0:
+        players_alive +=1
+      obs1[1,int(p[1]),int(p[0])] = p_status
+    for z in player.zombie_info:
+      obs1[2,int(z[1]),int(z[0])] = z[2]
+    obs1[3,int(x),int(y)] = 1
+
+    obs2 = np.array([players_alive, gens_left])
+
+    return obs1, obs2
+  
+  def complete_gen(self, x, y):
+    for g in self.gens:
+      if x == g.x and y == g.y:
+        g.completed=1
+        self.gens_active -= 1
 
 
   def step(self, actions, verbose=False):
@@ -215,6 +262,9 @@ class env:
       self.players[0].x-=1
     if act == 'd':
       self.players[0].x+=1
+    if act == 'r':
+      self.complete_gen(self.players[0].x, self.players[0].y)
+
     self.update_player_info()
     
 

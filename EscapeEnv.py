@@ -54,7 +54,7 @@ class generator:
     self.completed = 0
 
 class env:
-  def __init__(self, map_size = [10,10], n_players = 2, n_zoms=1, gen_locs = np.array([[4,4], [1,8], [8,8]]), player_start_locs = np.array([[8,1], [7,2]]), i_decay = 0.2):
+  def __init__(self, map_size = [10,10], n_players = 2, n_zoms=1, gen_locs = np.array([[4,4], [1,8], [8,8]]), player_start_locs = np.array([[8,1], [7,2]]), i_decay = 0.2, ):
     self.n_players = n_players
     self.player_ids = np.arange(n_players)
     #print(f"Player id's {self.player_ids}")
@@ -186,9 +186,9 @@ class env:
   # out of bounds utility
   def oob(self, x,y):
     if x < 0 or x >= self.map_size[0] or y<0 or y >= self.map_size[1]:
-      return False
-    else:
       return True
+    else:
+      return False
 
   def obs(self, id, verbose=True):
     """ 
@@ -242,28 +242,70 @@ class env:
     return obs1, obs2
   
   def complete_gen(self, x, y):
+    reward = 0
     for g in self.gens:
-      if x == g.x and y == g.y:
+      if x == g.x and y == g.y and g.completed != 1:
+        print("repaired gen!")
         g.completed=1
         self.gens_active -= 1
+        reward+=1
+    return reward
+    
+  def player_move(self, id, dir):
+    reward = 0
+    #if player is dead then don't move or reward them
+    if self.players[id].alive == 0:
+      print(f"player {id} dead")
+      return reward
+    x = self.players[id].x
+    y = self.players[id].y
+    if dir == 0:
+      y-=1
+    elif dir==1:
+      x+=1
+    elif dir==2:
+      y+=1
+    elif dir==3:
+      x-=1
+    
+    for z in self.zombies:
+      if x==z.x and y==z.y:
+        self.players[id].alive = 0
+        #self.players[id].num_alive -=1
+        reward -=1
+        return reward
 
+    if not self.oob(x,y):
+      self.players[id].x = x
+      self.players[id].y = y
+      if self.gens_active == 0 and x==0 and y==0:
+        self.players[id].alive=0
+        reward += 5
+    return reward
 
   def step(self, actions, verbose=False):
+    rewards = np.zeros(actions.shape[0])
     if verbose==True:
       for agent in range(actions.shape[0]):
         print(f"Agent {agent} Took action: {actions[agent]}")
-
-    act = input("Player 0 take action ('w','a','s','d'): ")
-    if act == 'w':
-      self.players[0].y-=1
-    if act == 's':
-      self.players[0].y+=1
-    if act == 'a':
-      self.players[0].x-=1
-    if act == 'd':
-      self.players[0].x+=1
-    if act == 'r':
-      self.complete_gen(self.players[0].x, self.players[0].y)
+        
+    for agent in range(actions.shape[0]):
+      act = np.argmax(actions[agent])
+      print(f"act {act}")
+      if act<4:
+        rewards[agent] += self.player_move(agent,act)
+      elif act == 4:
+        self.complete_gen(self.players[agent].x, self.players[agent].y)
+    
+    for zomb in self.zombies:
+      dx = random.randint(-1,1)
+      dy = 0
+      if dx == 0:
+        dy = random.randint(-1,1)
+      
+      if not self.oob(zomb.x + dx, zomb.y + dy):
+        zomb.x = zomb.x+dx
+        zomb.y = zomb.y+dy
 
     self.update_player_info()
     

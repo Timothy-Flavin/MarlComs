@@ -21,7 +21,7 @@ for i in range(80):
   if act == 'r':
     actions[0,4] = 1
 
-  print(actions)
+  #print(actions)
   env.step(actions)
   env.render_full_ascii(playerid=0)
   obs1, obs2 = env.obs(id=0)

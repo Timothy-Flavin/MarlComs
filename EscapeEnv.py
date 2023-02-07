@@ -302,10 +302,10 @@ class env:
     max_dist = self.map_size[0] * self.map_size[1]
     target = - 1    
     for p in range(z.player_locs.shape[0]):
-      print(z.player_locs[p])
+      #print(z.player_locs[p])
       if z.player_locs[p,2] > self.i_decay/2:
         p_dist = abs(z.x - z.player_locs[p,0]) + abs(z.y - z.player_locs[p,1])
-        print(f"max dist {max_dist}, pdist {p_dist}")
+        #print(f"max dist {max_dist}, pdist {p_dist}")
         if p_dist < max_dist and self.players[p].alive>0:
           max_dist = p_dist
           target = p
@@ -322,7 +322,7 @@ class env:
         z.x = z.x+dx
         z.y = z.y+dy
     else:
-      print(f"Target player {target}")
+      #print(f"Target player {target}")
       dx = z.player_locs[target,0] - z.x
       dy = z.player_locs[target,1] - z.y
       if dx != 0 and dy != 0:
@@ -355,7 +355,7 @@ class env:
         
     for agent in range(actions.shape[0]):
       act = np.argmax(actions[agent])
-      print(f"act {act}")
+      #print(f"act {act}")
       if act<4:
         rewards[agent] += self.player_move(agent,act)
       elif act == 4:

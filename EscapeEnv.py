@@ -43,9 +43,6 @@ class zombie:
     # a player is in the zombie's vision or if they communicate
     self.player_locs = np.zeros((n_players, 3)) # player [x, y, recency]
 
-  def move():
-    print("zombie moves")
-
 class generator: 
   def __init__(self, id, x, y):
     self.id = id
@@ -98,6 +95,14 @@ class env:
             rec = 1
           p.gens_info[g.id] = np.array([p.gens_info[g.id,0],p.gens_info[g.id,1], rec, p.gens_info[g.id,3]])
 
+  def update_zombie_info(self):
+    for z in self.zombies:
+      for p in self.players:
+        if self.viewable_by(p.x,p.y,z):
+          z.player_locs[p.id] = np.array([p.x,p.y,1.0])
+        else:
+          z.player_locs[p.id,2] = max(z.player_locs[p.id,2]-self.i_decay,0)
+  
   def reset(self, randomize_gens = True):
     if randomize_gens:
       genlocs = np.random.choice(a=np.arange(self.map_size[0]*self.map_size[1]),size=self.n_gens, replace=False)
@@ -141,7 +146,10 @@ class env:
     for y in range(self.map_size[1]):
       zmap.append([])
       for x in range(self.map_size[0]):
-        zmap[-1].append("  ")
+        if player is not None:
+          zmap[-1].append("--")
+        else:
+          zmap[-1].append("  ")
     for g in self.gens:
       if player is None or self.viewable_by(g.x,g.y, player) or player.gens_info[g.id,3] > 0:
         zmap[g.x][g.y] = f"G{g.id}"
@@ -154,6 +162,11 @@ class env:
         zmap[z.x][z.y] = f"Z{z.id}"
     
     if player is not None:
+      for y in range(player.y-player.view_range, player.y+player.view_range+1):
+        for x in range(player.x-player.view_range, player.x+player.view_range+1):
+          if not self.oob(x, y):
+            if zmap[x][y] == "--":
+              zmap[x][y] = "  "
       for p in range(player.players_info.shape[0]):
         p_inf = player.players_info[p]
         # if a player has been seen but is not currently being seen render
@@ -217,8 +230,8 @@ class env:
     view_range = player.view_range
     x = player.x
     y = player.y
-    if verbose:
-      print(f"observation for player: {id}")
+    #if verbose:
+      #print(f"observation for player: {id}")
     obs1 = np.zeros(shape=(4, self.map_size[0], self.map_size[1]), dtype=np.float32)
     players_alive = 0
     gens_left = 0
@@ -271,6 +284,8 @@ class env:
     for z in self.zombies:
       if x==z.x and y==z.y:
         self.players[id].alive = 0
+        # remove self from zombie's list
+        z.player_locs[id,2] = 0
         #self.players[id].num_alive -=1
         reward -=1
         return reward
@@ -283,6 +298,55 @@ class env:
         reward += 5
     return reward
 
+  def zombie_move(self, z):
+    max_dist = self.map_size[0] * self.map_size[1]
+    target = - 1    
+    for p in range(z.player_locs.shape[0]):
+      print(z.player_locs[p])
+      if z.player_locs[p,2] > self.i_decay/2:
+        p_dist = abs(z.x - z.player_locs[p,0]) + abs(z.y - z.player_locs[p,1])
+        print(f"max dist {max_dist}, pdist {p_dist}")
+        if p_dist < max_dist and self.players[p].alive>0:
+          max_dist = p_dist
+          target = p
+          if p_dist == 0:
+            self.players[p].alive=False
+            z.player_locs[p,2] = 0
+    
+    if target == -1:
+      dx = random.randint(-1,1)
+      dy = 0
+      if dx == 0:
+        dy = random.randint(-1,1)
+      if not self.oob(z.x + dx, z.y + dy):
+        z.x = z.x+dx
+        z.y = z.y+dy
+    else:
+      print(f"Target player {target}")
+      dx = z.player_locs[target,0] - z.x
+      dy = z.player_locs[target,1] - z.y
+      if dx != 0 and dy != 0:
+        choice = random.randint(0,1)
+        if choice == 0:
+          if dx>0:
+            z.x+=1
+          if dx<0:
+            z.x-=1
+        else:
+          if dy>0:
+            z.y+=1
+          if dy<0:
+            z.y-=1
+      else:
+        if dx>0:
+          z.x+=1
+        if dx<0:
+          z.x-=1
+        if dy>0:
+          z.y+=1
+        if dy<0:
+          z.y-=1
+    
   def step(self, actions, verbose=False):
     rewards = np.zeros(actions.shape[0])
     if verbose==True:
@@ -297,16 +361,11 @@ class env:
       elif act == 4:
         self.complete_gen(self.players[agent].x, self.players[agent].y)
     
-    for zomb in self.zombies:
-      dx = random.randint(-1,1)
-      dy = 0
-      if dx == 0:
-        dy = random.randint(-1,1)
+    for z in self.zombies:
+      self.zombie_move(z)
       
-      if not self.oob(zomb.x + dx, zomb.y + dy):
-        zomb.x = zomb.x+dx
-        zomb.y = zomb.y+dy
 
+    self.update_zombie_info()
     self.update_player_info()
     
 

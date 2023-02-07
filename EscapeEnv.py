@@ -359,7 +359,7 @@ class env:
       if act<4:
         rewards[agent] += self.player_move(agent,act)
       elif act == 4:
-        self.complete_gen(self.players[agent].x, self.players[agent].y)
+        rewards[agent] += self.complete_gen(self.players[agent].x, self.players[agent].y)
     
     for z in self.zombies:
       self.zombie_move(z)
@@ -368,4 +368,4 @@ class env:
     self.update_zombie_info()
     self.update_player_info()
     
-
+    return rewards

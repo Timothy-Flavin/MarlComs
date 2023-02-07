@@ -22,7 +22,7 @@ for i in range(80):
     actions[0,4] = 1
 
   #print(actions)
-  observations, rewards, termination, truncation, info = env.step(actions)
+  observations, rewards = env.step(actions)
   env.render_full_ascii(playerid=0)
   obs1, obs2 = env.obs(id=0)
   #print("Observation 1, gens players zombies me")

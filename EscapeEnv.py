@@ -10,10 +10,12 @@ class survivor:
     # x and y are saved, but observation will return dx and dy on a scale of [0,1]
     self.gens_info = np.zeros(shape=(n_gens,4)) # [gen id] [x, y, recency, completed]
     # gen dx = 0 dy = 0 and recency is -1 if not seen or completed and completed is 0 or 1
-    self.players_info = np.zeros(shape=(n_players,4)) # [player id] [x, y, recency, alive]
+    self.players_info = np.zeros(shape=(n_players,5)) # [player id] [x, y, recency, alive, repairing]
     self.players_info[:,3] = 1
-    self.zombie_info = np.zeros(shape=(n_players,3)) # [zom id] [x, y, recency]
+    self.zombie_info = np.zeros(shape=(n_zoms,3)) # [zom id] [x, y, recency]
     self.view_range = view_range
+    self.repairing = 0
+    self.took_actions = np.zeros(n_players)
 
   def __str__(self):
     st = f"Player [{self.id}]: x: {self.x}, y: {self.y}, alive: {self.alive}, view_range: {self.view_range}\n"
@@ -51,7 +53,7 @@ class generator:
     self.completed = 0
 
 class env:
-  def __init__(self, map_size = [10,10], n_players = 2, n_zoms=1, gen_locs = np.array([[4,4], [1,8], [8,8]]), player_start_locs = np.array([[8,1], [7,2]]), i_decay = 0.2, ):
+  def __init__(self, map_size = [10,10], n_players = 2, n_zoms=1, gen_locs = np.array([[4,4], [1,8], [8,8]]), player_start_locs = np.array([[8,1], [7,2]]), i_decay = 0.2,  gen_turns=2, max_steps = -1, flatten=True):
     self.n_players = n_players
     self.player_ids = np.arange(n_players)
     #print(f"Player id's {self.player_ids}")
@@ -61,6 +63,12 @@ class env:
     self.n_gens = len(gen_locs)
     self.player_start_locs = player_start_locs
     self.i_decay = i_decay
+    self.community_rewards = np.zeros([n_players])
+    self.gen_turns = gen_turns
+    self.max_steps = max_steps
+    self.steps = 0
+    self.done = False
+    self.flatten = flatten
 
   def viewable_by(self, x,y, e2):
     """Returns True if entity x,y is within viewrange of entity e2"""
@@ -79,9 +87,9 @@ class env:
 
       for op in self.players:
         if self.viewable_by(op.x,op.y,p):
-          p.players_info[op.id] = np.array([op.x,op.y,1.0,op.alive])
+          p.players_info[op.id] = np.array([op.x,op.y,1.0,op.alive, op.repairing])
         else:
-          p.players_info[op.id] = np.array([p.players_info[op.id,0],p.players_info[op.id,1],max(p.players_info[op.id,2]-self.i_decay,0), p.players_info[op.id,3]])
+          p.players_info[op.id] = np.array([p.players_info[op.id,0],p.players_info[op.id,1],max(p.players_info[op.id,2]-self.i_decay,0), p.players_info[op.id,3],p.players_info[op.id,4]])
 
       for g in self.gens:
         if self.viewable_by(g.x,g.y,p):
@@ -134,6 +142,7 @@ class env:
             onplayer = True
       self.zombies.append(zombie(i,x,y,3))
     self.update_player_info()
+    return self.observe()
 
   def render_full_ascii(self, playerid=None):
     """Renders the state of the game in ascii. 
@@ -218,12 +227,11 @@ class env:
           gen and > 0 is occupied
     players: same thing but players, 0 is dead
     zombies: same thing but zombies 
+    self: location of myself
 
     and another array of misc information
     int: players alive from this player's pov
     int: gens left from this players pov     
-    binary: door open
-
     """
     
     player = self.players[id]
@@ -252,24 +260,48 @@ class env:
 
     obs2 = np.array([players_alive, gens_left])
 
-    return obs1, obs2
+    if self.flatten:
+      #print(f"obs1 shape: {obs1.shape}, flattened shape: {obs1.flatten().shape}")
+      obs = np.concatenate((obs1.flatten(), obs2))
+      #print(obs.shape)
+      return obs
+    else:
+      return obs1, obs2
   
-  def complete_gen(self, x, y):
-    reward = 0
+  def repair_gen(self, agent):
+    reward, community_reward=0,0
+
+    # if already repairing, make progress and award if finished
+    if agent.repairing > 0:
+      agent.repairing -= 1
+      if agent.repairing == 0:
+        for g in self.gens:
+          if agent.x == g.x and agent.y == g.y and g.completed != 1:
+            print("repaired gen!")
+            g.completed=1
+            self.gens_active -= 1
+            reward+=1
+            community_reward = 0.5
+      return reward,community_reward
+
+    # if not repairing, but standing on a not done gen, start the process
     for g in self.gens:
-      if x == g.x and y == g.y and g.completed != 1:
-        print("repaired gen!")
-        g.completed=1
-        self.gens_active -= 1
-        reward+=1
-    return reward
+      if agent.x == g.x and agent.y == g.y and g.completed != 1:
+        if agent.repairing == 0:
+          agent.repairing = self.gen_turns -1
+        
+    return reward, community_reward
     
   def player_move(self, id, dir):
     reward = 0
+    community_reward = 0
     #if player is dead then don't move or reward them
     if self.players[id].alive == 0:
       print(f"player {id} dead")
-      return reward
+      return reward, community_reward
+    if self.players[id].repairing > 0:
+      return reward, community_reward
+
     x = self.players[id].x
     y = self.players[id].y
     if dir == 0:
@@ -287,8 +319,11 @@ class env:
         # remove self from zombie's list
         z.player_locs[id,2] = 0
         #self.players[id].num_alive -=1
-        reward -=1
-        return reward
+       
+        reward -= 1
+        community_reward -=0.5
+        print(f"eaten by zombie r {reward}, cr {community_reward}")
+        return reward, community_reward
 
     if not self.oob(x,y):
       self.players[id].x = x
@@ -296,9 +331,12 @@ class env:
       if self.gens_active == 0 and x==0 and y==0:
         self.players[id].alive=0
         reward += 5
-    return reward
+        community_reward += 2.5
+    return reward, community_reward
 
   def zombie_move(self, z):
+    rewards = np.zeros(len(self.players))
+    community_rewards = np.zeros(len(self.players))
     max_dist = self.map_size[0] * self.map_size[1]
     target = - 1    
     for p in range(z.player_locs.shape[0]):
@@ -310,8 +348,11 @@ class env:
           max_dist = p_dist
           target = p
           if p_dist == 0:
-            self.players[p].alive=False
+            print(f"zombie got player {p}")
+            self.players[p].alive=0
             z.player_locs[p,2] = 0
+            rewards[p]-=1
+            community_rewards[p] -= 0.5
     
     if target == -1:
       dx = random.randint(-1,1)
@@ -325,6 +366,7 @@ class env:
       #print(f"Target player {target}")
       dx = z.player_locs[target,0] - z.x
       dy = z.player_locs[target,1] - z.y
+      # if both directions are not zero, pick one
       if dx != 0 and dy != 0:
         choice = random.randint(0,1)
         if choice == 0:
@@ -337,7 +379,8 @@ class env:
             z.y+=1
           if dy<0:
             z.y-=1
-      else:
+      # if one direction is not zero, go that way
+      elif dx!=0 or dy!=0:
         if dx>0:
           z.x+=1
         if dx<0:
@@ -346,26 +389,88 @@ class env:
           z.y+=1
         if dy<0:
           z.y-=1
-    
+      # if we are on the player now and have not already killed them before moving, kill them
+      dx = self.players[target].x - z.x
+      dy = self.players[target].y - z.y
+      if dx==0 and dy==0 and max_dist>0:
+        print(f"zombie got player {target} after moving")
+        self.players[target].alive=0
+        z.player_locs[target,2] = 0
+        rewards[target]-=1
+        community_rewards[target] -= 0.5
+    return rewards, community_rewards
+  
+  def game_over(self):
+    over = True
+    for p in self.players:
+      if p.alive>0:
+        over = False
+    return over
+  
+  def distribute_community_rewards(self):
+    rewards = np.zeros(self.n_players)
+    for i in range(self.n_players):
+      for r in range(self.n_players):
+        if r!=i:
+          rewards[i] += self.community_rewards[r]
+    print(f"community rewards: {self.community_rewards}, distributed rewards = {rewards}")
+    return rewards
+
+  def observe(self):
+    observations = []
+    if self.flatten:
+      observations = np.zeros((self.n_players, self.map_size[0]*self.map_size[1]*4 + 2))
+    for i,agent in enumerate(self.players):
+      if self.flatten:
+        obs = self.obs(i)
+        #print(f"Observations shape: {observations.shape} obs {i} shape: {obs.shape}")
+      else:
+        observations.append(self.obs(i))
+
   def step(self, actions, verbose=False):
+    self.took_actions = np.ones(self.n_players)
+    if self.done:
+      return 0, 0, 0, 0, 0
+    self.steps +=1
     rewards = np.zeros(actions.shape[0])
     if verbose==True:
       for agent in range(actions.shape[0]):
         print(f"Agent {agent} Took action: {actions[agent]}")
         
     for agent in range(actions.shape[0]):
+      if self.players[agent].alive == 0:
+        self.took_actions[agent] = 0
+        continue
       act = np.argmax(actions[agent])
       #print(f"act {act}")
-      if act<4:
-        rewards[agent] += self.player_move(agent,act)
-      elif act == 4:
-        rewards[agent] += self.complete_gen(self.players[agent].x, self.players[agent].y)
-    
-    for z in self.zombies:
-      self.zombie_move(z)
+      if act == 4 or self.players[agent].repairing > 0:
+        if act==4:
+          print("chose to repair the gen")
+        else:
+          print("stuck repairing, can't move")
+        r, cr = self.repair_gen(self.players[agent])
+        rewards[agent] += r
+        self.community_rewards[agent] += cr 
+      elif act<4:
+        r, cr = self.player_move(agent,act)
+        rewards[agent] += r
+        self.community_rewards[agent] += cr
       
-
+    for z in self.zombies:
+      rs, crs = self.zombie_move(z)
+      rewards += rs
+      self.community_rewards += crs
     self.update_zombie_info()
     self.update_player_info()
     
-    return rewards
+
+    observations = self.observe()
+
+    truncated = False
+    if self.game_over():
+      rewards += self.distribute_community_rewards()
+      self.done = True
+      self.took_actions = np.ones(self.n_players)
+    if self.max_steps > 0 and self.steps >= self.max_steps:
+      truncated = True
+    return observations, rewards, self.done, truncated, {"n_players": self.n_players, "n_gens": self.n_gens, "gens_active": self.gens_active, "n_zombies": self.n_zoms, "step":self.steps, "max_steps": self.map_size, "map_size":self.map_size}

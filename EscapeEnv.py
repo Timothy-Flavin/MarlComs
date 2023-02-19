@@ -53,10 +53,11 @@ class generator:
     self.completed = 0
 
 class env:
-  def __init__(self, map_size = [10,10], n_players = 2, n_chasers=1, gen_locs = np.array([[4,4], [1,8], [8,8]]), player_start_locs = np.array([[8,1], [7,2]]), i_decay = 0.2,  gen_turns=2, max_steps = -1, flatten=True):
+  def __init__(self, map_size = [10,10], n_players = 2, n_chasers=1, gen_locs = np.array([[4,4], [1,8], [8,8]]), player_start_locs = np.array([[8,1], [7,2]]), i_decay = 0.2,  gen_turns=2, max_steps = -1, player_view_range = 2,flatten=True):
     self.n_players = n_players
     self.player_ids = np.arange(n_players)
     #print(f"Player id's {self.player_ids}")
+    self.player_view_range = player_view_range
     self.n_chasers = n_chasers
     self.map_size = np.array(map_size)
     self.gen_locs = gen_locs
@@ -125,7 +126,7 @@ class env:
     
     self.players = []
     for i in range(len(self.player_start_locs)):
-      self.players.append(survivor(id=i, x=self.player_start_locs[i,0], y=self.player_start_locs[i,1], n_gens = self.n_gens, n_players = self.n_players, n_chasers = self.n_chasers))
+      self.players.append(survivor(id=i, x=self.player_start_locs[i,0], y=self.player_start_locs[i,1], n_gens = self.n_gens, n_players = self.n_players, n_chasers = self.n_chasers, view_range=self.player_view_range))
     self.gens = []
     for i in range(self.n_gens):
       self.gens.append(generator(i,self.gen_locs[i,0], self.gen_locs[i,1]))
@@ -427,6 +428,33 @@ class env:
       else:
         observations.append(self.obs(i))
 
+  def player_callout(self, agent):
+    print(f"Agent {agent.id} Calls out!")
+    for player in self.players:
+      if agent.id == player.id:
+        continue
+        # players_info x y recency
+        # gens_info
+        # chaser_info
+      for g in range(agent.gens_info.shape[0]):
+        if agent.gens_info[g,2] > player.gens_info[g,2]:
+          print(f"updated gen info {g}")
+          player.gens_info[g] = agent.gens_info[g]
+      
+      for p in range(agent.players_info.shape[0]):
+        if agent.players_info[p,2] > player.players_info[p,2]:
+          print(f"updated player info {p}")
+          player.players_info[p] = agent.players_info[p]
+      player.players_info[agent.id] = np.array([agent.x,agent.y,1,agent.alive,agent.repairing])
+      for c in range(agent.chaser_info.shape[0]):
+        if agent.chaser_info[c,2] >= player.chaser_info[c,2]:
+          print(f"updated chaser info {c}")
+          player.chaser_info[c] = agent.chaser_info[c]
+
+      for chaser in self.chasers:
+        chaser.player_locs[agent.id] = np.array([agent.x, agent.y, 1.0])
+    return 0,0
+
   def step(self, actions, verbose=False):
     self.took_actions = np.ones(self.n_players)
     if self.done:
@@ -455,17 +483,19 @@ class env:
         r, cr = self.player_move(agent,act)
         rewards[agent] += r
         self.community_rewards[agent] += cr
-      
+      if act == 5:
+        r, cr, = self.player_callout(self.players[agent])
+        rewards[agent] += r
+        self.community_rewards[agent] += cr
+    
     for z in self.chasers:
       rs, crs = self.chaser_move(z)
       rewards += rs
       self.community_rewards += crs
     self.update_chaser_info()
     self.update_player_info()
-    
 
     observations = self.observe()
-
     truncated = False
     if self.game_over():
       rewards += self.distribute_community_rewards()

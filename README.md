@@ -41,9 +41,9 @@ env.render_full_ascii()
 done = False
 
 while not done:
-  actions = np.array([[0,0,0,0,0,],[0,0,0,0,0,]])
+  actions = np.array([[0,0,0,0,0,0,],[0,0,0,0,0,0,]])
   # Player 2 takes a random action. move or communicate
-  p2_action = random.randint(0,4)
+  p2_action = random.randint(0,5)
   actions[1,p2_action] = 1
 
   # Player 1 takes an action prompted by the terminal

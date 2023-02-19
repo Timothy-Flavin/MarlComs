@@ -91,7 +91,7 @@ If `flatten==True` then a single dimensional array will be returned with the sam
 
 `EscapeEnv` is the environment file and `EscapeEnvTest` is a simple playable implementation from player 0's perspective.
 
+
 ## TODO
 
-the *callout* action is still being developed.  
-
+New rewards structure for callout and other actions at the same time. 

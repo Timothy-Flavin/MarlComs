@@ -120,6 +120,7 @@ class env:
   
   def reset(self, randomize_gens = True):
     self.done = False
+    self.community_rewards = np.zeros([self.n_players])
     if randomize_gens:
       genlocs = np.random.choice(a=np.arange(self.map_size[0]*self.map_size[1]),size=self.n_gens, replace=False)
       #print("Randomizing generator locations")
@@ -435,6 +436,7 @@ class env:
     for i,agent in enumerate(self.players):
       observations.append(self.obs(i))
     return observations
+ 
   def player_callout(self, agent, verbose= False):
     if verbose:
       print(f"Agent {agent.id} Calls out!")

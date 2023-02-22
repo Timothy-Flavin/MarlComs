@@ -53,6 +53,12 @@ class generator:
     self.completed = 0
 
 class env:
+
+  class action_space:
+    n = 6
+    def sample():
+      return random.randint(0,5)
+
   def __init__(self, map_size = [10,10], n_players = 2, n_chasers=1, gen_locs = np.array([[4,4], [1,8], [8,8]]), player_start_locs = np.array([[8,1], [7,2]]), i_decay = 0.2,  gen_turns=2, max_steps = -1, player_view_range = 2,flatten=True):
     self.n_players = n_players
     self.player_ids = np.arange(n_players)
@@ -213,7 +219,7 @@ class env:
     else:
       return False
 
-  def obs(self, id, verbose=True):
+  def obs(self, id, verbose=False):
     """ 
     Returns an observation from the perspective of the
     the player with the given id. view range is how far the 
@@ -419,15 +425,9 @@ class env:
 
   def observe(self):
     observations = []
-    if self.flatten:
-      observations = np.zeros((self.n_players, self.map_size[0]*self.map_size[1]*4 + 2))
     for i,agent in enumerate(self.players):
-      if self.flatten:
-        obs = self.obs(i)
-        #print(f"Observations shape: {observations.shape} obs {i} shape: {obs.shape}")
-      else:
-        observations.append(self.obs(i))
-
+      observations.append(self.obs(i))
+    return observations
   def player_callout(self, agent):
     print(f"Agent {agent.id} Calls out!")
     for player in self.players:

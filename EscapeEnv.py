@@ -119,6 +119,7 @@ class env:
           z.player_locs[p.id,2] = max(z.player_locs[p.id,2]-self.i_decay,0)
   
   def reset(self, randomize_gens = True):
+    self.done = False
     if randomize_gens:
       genlocs = np.random.choice(a=np.arange(self.map_size[0]*self.map_size[1]),size=self.n_gens, replace=False)
       #print("Randomizing generator locations")
@@ -275,7 +276,7 @@ class env:
     else:
       return obs1, obs2
   
-  def repair_gen(self, agent):
+  def repair_gen(self, agent, verbose=False):
     reward, community_reward=0,0
 
     # if already repairing, make progress and award if finished
@@ -284,7 +285,8 @@ class env:
       if agent.repairing == 0:
         for g in self.gens:
           if agent.x == g.x and agent.y == g.y and g.completed != 1:
-            print("repaired gen!")
+            if verbose:
+              print("repaired gen!")
             g.completed=1
             self.gens_active -= 1
             reward+=1
@@ -299,12 +301,13 @@ class env:
         
     return reward, community_reward
     
-  def player_move(self, id, dir):
+  def player_move(self, id, dir, verbose=False):
     reward = 0
     community_reward = 0
     #if player is dead then don't move or reward them
     if self.players[id].alive == 0:
-      print(f"player {id} dead")
+      if verbose:
+        print(f"player {id} dead")
       return reward, community_reward
     if self.players[id].repairing > 0:
       return reward, community_reward
@@ -329,7 +332,8 @@ class env:
        
         reward -= 1
         community_reward -=0.5
-        print(f"tagged by chaser r {reward}, cr {community_reward}")
+        if verbose:
+          print(f"tagged by chaser r {reward}, cr {community_reward}")
         return reward, community_reward
 
     if not self.oob(x,y):
@@ -341,7 +345,7 @@ class env:
         community_reward += 2.5
     return reward, community_reward
 
-  def chaser_move(self, z):
+  def chaser_move(self, z, verbose=False):
     rewards = np.zeros(len(self.players))
     community_rewards = np.zeros(len(self.players))
     max_dist = self.map_size[0] * self.map_size[1]
@@ -355,7 +359,8 @@ class env:
           max_dist = p_dist
           target = p
           if p_dist == 0:
-            print(f"chaser got player {p}")
+            if verbose:
+              print(f"chaser got player {p}")
             self.players[p].alive=0
             z.player_locs[p,2] = 0
             rewards[p]-=1
@@ -400,7 +405,8 @@ class env:
       dx = self.players[target].x - z.x
       dy = self.players[target].y - z.y
       if dx==0 and dy==0 and max_dist>0:
-        print(f"chaser got player {target} after moving")
+        if verbose:
+          print(f"chaser got player {target} after moving")
         self.players[target].alive=0
         z.player_locs[target,2] = 0
         rewards[target]-=1
@@ -414,13 +420,14 @@ class env:
         over = False
     return over
   
-  def distribute_community_rewards(self):
+  def distribute_community_rewards(self, verbose=False):
     rewards = np.zeros(self.n_players)
     for i in range(self.n_players):
       for r in range(self.n_players):
         if r!=i:
           rewards[i] += self.community_rewards[r]
-    print(f"community rewards: {self.community_rewards}, distributed rewards = {rewards}")
+    if verbose:
+      print(f"community rewards: {self.community_rewards}, distributed rewards = {rewards}")
     return rewards
 
   def observe(self):
@@ -428,8 +435,9 @@ class env:
     for i,agent in enumerate(self.players):
       observations.append(self.obs(i))
     return observations
-  def player_callout(self, agent):
-    print(f"Agent {agent.id} Calls out!")
+  def player_callout(self, agent, verbose= False):
+    if verbose:
+      print(f"Agent {agent.id} Calls out!")
     for player in self.players:
       if agent.id == player.id:
         continue
@@ -438,17 +446,20 @@ class env:
         # chaser_info
       for g in range(agent.gens_info.shape[0]):
         if agent.gens_info[g,2] > player.gens_info[g,2]:
-          print(f"updated gen info {g}")
+          if verbose:
+            print(f"updated gen info {g}")
           player.gens_info[g] = agent.gens_info[g]
       
       for p in range(agent.players_info.shape[0]):
         if agent.players_info[p,2] > player.players_info[p,2]:
-          print(f"updated player info {p}")
+          if verbose:
+            print(f"updated player info {p}")
           player.players_info[p] = agent.players_info[p]
       player.players_info[agent.id] = np.array([agent.x,agent.y,1,agent.alive,agent.repairing])
       for c in range(agent.chaser_info.shape[0]):
         if agent.chaser_info[c,2] >= player.chaser_info[c,2]:
-          print(f"updated chaser info {c}")
+          if verbose:
+            print(f"updated chaser info {c}")
           player.chaser_info[c] = agent.chaser_info[c]
 
       for chaser in self.chasers:
@@ -472,10 +483,11 @@ class env:
       act = np.argmax(actions[agent])
       #print(f"act {act}")
       if act == 4 or self.players[agent].repairing > 0:
-        if act==4:
-          print("chose to repair the gen")
-        else:
-          print("stuck repairing, can't move")
+        if verbose:
+          if act==4:
+            print("chose to repair the gen")
+          else:
+            print("stuck repairing, can't move")
         r, cr = self.repair_gen(self.players[agent])
         rewards[agent] += r
         self.community_rewards[agent] += cr 

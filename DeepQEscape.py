@@ -41,8 +41,8 @@ class DQN(nn.Module):
 
   def __init__(self, n_observations, n_actions):
     super(DQN, self).__init__()
-    self.layer1 = nn.Linear(n_observations, 256)
-    self.layer2 = nn.Linear(256, 128)
+    self.layer1 = nn.Linear(n_observations, 512)
+    self.layer2 = nn.Linear(512, 128)
     self.layer3 = nn.Linear(128, n_actions)
 
   # Called with either one element to determine next action, or a batch
@@ -63,7 +63,7 @@ BATCH_SIZE = 128
 GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 5000
+EPS_DECAY = 200000
 TAU = 0.005
 LR = 1e-4
 
@@ -79,8 +79,8 @@ target_net = DQN(n_observations, n_actions).to(device)
 target_net.load_state_dict(policy_net.state_dict())
 
 optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
-memory1 = ReplayMemory(10000)
-memory2 = ReplayMemory(10000)
+memory1 = ReplayMemory(5000)
+memory2 = ReplayMemory(5000)
 
 steps_done = 0
 
@@ -118,7 +118,7 @@ def plot_durations(show_result=False):
   # Take 100 episode averages and plot them too
   if len(durations_t) >= 10:
     means = durations_t.unfold(0, 10, 1).mean(1).view(-1)
-    means = torch.cat((torch.zeros(9), means))
+    means = torch.cat((torch.zeros(9)+durations_t.numpy()[0], means))
     plt.plot(means.numpy())
 
   plt.pause(0.001)  # pause a bit so that plots are updated
@@ -271,6 +271,7 @@ for i_episode in range(num_episodes):
         cumr2 = 0
         plot_durations()
         dones=0
+        print(f" epsilon: {EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)}, step: {steps_done} / {num_episodes}")
       break
 
 print('Complete')

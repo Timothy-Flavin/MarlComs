@@ -59,7 +59,7 @@ class env:
     def sample():
       return random.randint(0,5)
 
-  def __init__(self, map_size = [10,10], n_players = 2, n_chasers=1, gen_locs = np.array([[4,4], [1,8], [8,8]]), player_start_locs = np.array([[8,1], [7,2]]), i_decay = 0.2,  gen_turns=2, max_steps = -1, player_view_range = 2,flatten=True):
+  def __init__(self, map_size = [10,10], n_players = 2, n_chasers=1, gen_locs = np.array([[4,4], [1,8], [8,8]]), player_start_locs = np.array([[8,1], [7,2]]), i_decay = 0.2,  gen_turns=2, max_steps = 100, player_view_range = 2,flatten=True):
     self.n_players = n_players
     self.player_ids = np.arange(n_players)
     #print(f"Player id's {self.player_ids}")
@@ -119,6 +119,7 @@ class env:
           z.player_locs[p.id,2] = max(z.player_locs[p.id,2]-self.i_decay,0)
   
   def reset(self, randomize_gens = True):
+    self.steps = 0
     self.done = False
     self.community_rewards = np.zeros([self.n_players])
     if randomize_gens:
